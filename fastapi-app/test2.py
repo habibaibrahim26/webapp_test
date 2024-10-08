@@ -46,8 +46,36 @@ class UserInDB(User):
 
 
 
+
+
+
+def get_current_user(token:str= Depends(oauth2)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="could not validate credintials",
+        
+    )
+    try:
+        data = jwt.decode(token, secretKey, algorithms=algo)
+        username:str = data.get("sub")
+        if username is None:
+            raise credentials_exception
+        
+    except JWTError:
+        raise credentials_exception
+
+    user = get_user(username)
+    if user is None:
+        raise credentials_exception
+
+    return user
+
+
+
+
+
 @app.get('/books', response_model = List[BookResponse])
-def get_books():
+def get_books(current_user: User = Depends(get_current_user)):
     books=list(collection.find())
     for book in books:
         book['id'] =str(book['_id'])
@@ -57,7 +85,7 @@ def get_books():
 
 
 @app.get('/books/{book_id}', response_model = BookResponse)
-def get_book(book_id : str):
+def get_book(book_id : str, current_user: User = Depends(get_current_user)):
     book = collection.find_one({'_id':ObjectId(book_id)})
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -70,7 +98,7 @@ def get_book(book_id : str):
 
 
 @app.post('/books/add', response_model=BookResponse, status_code=201)
-def add_books(book:Book):
+def add_books(book:Book, current_user: User = Depends(get_current_user)):
     
     if not book.name:
         raise HTTPException(status_code=400, detail ="Book name is required")
@@ -87,7 +115,7 @@ def add_books(book:Book):
     return new_book
 
 @app.delete('/books/delete/{book_id}', status_code=200)
-def delete_book(book_id:str):
+def delete_book(book_id:str, current_user: User = Depends(get_current_user)):
     
     if not book_id:
         raise HTTPException(status_code=400, detail ="Book ID is required")
@@ -103,7 +131,7 @@ def delete_book(book_id:str):
 
 
 @app.patch('/books/status/{book_id}')
-def update_book(book_id:str):
+def update_book(book_id:str, current_user: User = Depends(get_current_user)):
     if not book_id:
         raise HTTPException(status_code=400, detail ="Book ID is required")
     
@@ -156,7 +184,7 @@ def login_get_token(form_data:OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(
             status_code= status.HTTP_401_UNAUTHORIZED,
             detail="username or password incorrect",
-            headers={"WWW-Authenticate":"Bearer"},          
+                  
         )
     access_token_expires = timedelta(minutes=exp_time)
     access_token = create_token(data={"sub":user["username"]}, exp_delta=access_token_expires)
@@ -186,3 +214,11 @@ def register_user(user:User):
     except Exception as e:
         print(f"Error inserting user into the database: {e}")  
         raise HTTPException(status_code=500, detail="Error inserting user into the database")
+
+
+
+
+
+
+
+
